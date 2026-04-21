@@ -2,20 +2,40 @@ const fs = require('fs');
 const path = require('path');
 const { spawnSync } = require('child_process');
 
-function buildPrompt(paper, keyword) {
-  return `다음 논문을 분석하여 주요 주제 태그를 추출하세요.
+// ── 1차: 전체 논문 목록 → 공통 카테고리 3~5개 생성 ──────
+function buildCategoryPrompt(papers, keyword) {
+  const list = papers.map((p, i) =>
+    `[${i + 1}] ${p.title} (${p.year})`
+  ).join('\n');
 
-검색 키워드: "${keyword}"
-제목: ${paper.title}
-저자: ${paper.authors?.join(', ') || ''}
-연도: ${paper.year}
-초록: ${paper.abstract || '(초록 없음)'}
+  return `연구 주제 키워드: "${keyword}"
 
-위 논문의 주요 주제를 3~5개의 한국어 태그로 분류하세요.
-태그는 연구 주제, 연구 방법, 연구 대상을 반영해야 합니다.
+다음 논문 ${papers.length}편을 보고, 이 논문들을 묶을 수 있는 주제 카테고리 3~5개를 만드세요.
+카테고리는 논문들의 실제 내용을 반영하여 서로 겹치지 않아야 합니다.
+카테고리 이름은 10자 이내 한국어로 작성하세요.
+
+논문 목록:
+${list}
 
 JSON 형식으로만 응답하세요:
-{"tags": ["태그1", "태그2", "태그3"], "primaryTag": "가장 핵심 태그 1개", "summary": "한 줄 요약 (30자 이내)"}`;
+{"categories": ["카테고리1", "카테고리2", "카테고리3"]}`;
+}
+
+// ── 2차: 개별 논문 → 카테고리 배분 ──────────────────────
+function buildAssignPrompt(paper, categories) {
+  const catList = categories.map((c, i) => `${i + 1}. ${c}`).join('\n');
+  const abstract = paper.abstract ? paper.abstract.slice(0, 300) : '없음';
+
+  return `제목: ${paper.title}
+초록: ${abstract}
+
+위 논문을 다음 카테고리 중 하나에 배정하고, 한 줄 요약도 작성하세요.
+
+카테고리:
+${catList}
+
+JSON 형식으로만 응답하세요:
+{"category": "정확한 카테고리 이름", "summary": "한 줄 요약 (30자 이내)"}`;
 }
 
 function parseJson(text) {
@@ -24,21 +44,20 @@ function parseJson(text) {
   return JSON.parse(m[0]);
 }
 
-async function classifyWithApi(paper, keyword) {
+async function callApi(prompt) {
   const Anthropic = require('@anthropic-ai/sdk');
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
-  const response = await client.messages.create({
+  const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 200,
-    messages: [{ role: 'user', content: buildPrompt(paper, keyword) }]
+    max_tokens: 400,
+    messages: [{ role: 'user', content: prompt }],
   });
-  return parseJson(response.content[0].text.trim());
+  return res.content[0].text.trim();
 }
 
-function classifyWithCli(paper, keyword) {
+function callCli(prompt) {
   const claudePath = process.env.CLAUDE_CLI_PATH || 'claude';
-  const prompt = buildPrompt(paper, keyword);
-  const result = spawnSync(claudePath, ['-p', prompt], {
+  const r = spawnSync(claudePath, ['-p', prompt], {
     encoding: 'utf8',
     timeout: 60000,
     env: {
@@ -46,16 +65,14 @@ function classifyWithCli(paper, keyword) {
       PATH: `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${process.env.PATH || ''}`,
     },
   });
-  if (result.error) throw new Error(`claude CLI 실행 실패: ${result.error.message}`);
-  if (result.status !== 0) throw new Error(`claude CLI 오류: ${result.stderr}`);
-  return parseJson(result.stdout);
+  if (r.error) throw new Error(`claude CLI 실패: ${r.error.message}`);
+  if (r.status !== 0) throw new Error(`claude CLI 오류: ${r.stderr}`);
+  return r.stdout.trim();
 }
 
-async function classifyPaper(paper, keyword) {
-  if (process.env.USE_CLAUDE_CLI === '1') {
-    return classifyWithCli(paper, keyword);
-  }
-  return classifyWithApi(paper, keyword);
+async function callClaude(prompt) {
+  if (process.env.USE_CLAUDE_CLI === '1') return callCli(prompt);
+  return callApi(prompt);
 }
 
 async function runClassify(metadataPath, pdfsDir, outputDir, keyword) {
@@ -67,14 +84,30 @@ async function runClassify(metadataPath, pdfsDir, outputDir, keyword) {
     process.exit(1);
   }
 
-  if (hasClaudeCli && !hasApiKey) {
-    console.log('로컬 Claude CLI로 분류합니다.');
-  }
-
   const papers = JSON.parse(fs.readFileSync(metadataPath, 'utf8'));
   const classifiedDir = path.join(pdfsDir, 'classified');
-  const unclassifiedDir = path.join(pdfsDir, 'unclassified');
 
+  // ── 1차: 공통 카테고리 결정 ─────────────────────────────
+  console.log(`\n카테고리 생성 중... (${papers.length}편 분석)`);
+  let categories = ['기타'];
+  try {
+    const catText = await callClaude(buildCategoryPrompt(papers, keyword));
+    const parsed = parseJson(catText);
+    if (parsed.categories && parsed.categories.length > 0) {
+      categories = parsed.categories;
+      console.log(`  카테고리 ${categories.length}개 생성: ${categories.join(' / ')}`);
+    }
+  } catch (e) {
+    console.error(`  카테고리 생성 실패 (기본값 사용): ${e.message}`);
+  }
+
+  // 카테고리 폴더 미리 생성
+  categories.forEach(cat => {
+    fs.mkdirSync(path.join(classifiedDir, sanitizeFolderName(cat)), { recursive: true });
+  });
+  fs.mkdirSync(path.join(classifiedDir, '기타'), { recursive: true });
+
+  // ── 2차: 논문별 카테고리 배정 ───────────────────────────
   console.log(`\n주제 분류 시작 (${papers.length}개)`);
   const results = [];
 
@@ -82,70 +115,89 @@ async function runClassify(metadataPath, pdfsDir, outputDir, keyword) {
     const paper = papers[i];
     console.log(`  [${i + 1}/${papers.length}] ${paper.title.substring(0, 40)}...`);
 
+    let assignedCategory = '기타';
+    let summary = '';
+
     try {
-      const classification = await classifyPaper(paper, keyword);
-      paper.tags = classification.tags;
-      paper.primaryTag = classification.primaryTag;
-      paper.summary = classification.summary;
-      paper.classified = true;
+      const text = await callClaude(buildAssignPrompt(paper, categories));
+      const parsed = parseJson(text);
+      summary = parsed.summary || '';
 
-      if (paper.filePath) {
-        const srcPath = path.join(outputDir, paper.filePath);
-        if (fs.existsSync(srcPath)) {
-          const tagDir = path.join(classifiedDir, sanitizeFolderName(classification.primaryTag));
-          fs.mkdirSync(tagDir, { recursive: true });
-          const destPath = path.join(tagDir, path.basename(srcPath));
-          fs.renameSync(srcPath, destPath);
-          paper.filePath = path.join('pdfs', 'classified', sanitizeFolderName(classification.primaryTag), path.basename(srcPath));
-          console.log(`    ✓ [${classification.primaryTag}] ${classification.summary}`);
-        }
-      } else {
-        console.log(`    ✓ (원문없음) [${classification.primaryTag}] ${classification.summary}`);
-      }
+      // 응답 카테고리가 실제 목록에 있는지 확인 (fuzzy match)
+      const match = categories.find(c =>
+        c === parsed.category ||
+        c.includes(parsed.category) ||
+        parsed.category?.includes(c)
+      );
+      assignedCategory = match || '기타';
 
-      results.push(paper);
-    } catch (err) {
-      console.error(`    ✗ 분류 실패: ${err.message}`);
-      paper.tags = [];
-      paper.primaryTag = '미분류';
-      paper.classified = false;
-      results.push(paper);
+      console.log(`    → [${assignedCategory}] ${summary}`);
+    } catch (e) {
+      console.error(`    ✗ 배정 실패: ${e.message}`);
     }
 
-    // API/CLI rate limit 방지
+    paper.primaryTag = assignedCategory;
+    paper.summary = summary;
+    paper.classified = assignedCategory !== '기타';
+
+    // PDF 이동
+    if (paper.filePath) {
+      const srcPath = path.join(outputDir, paper.filePath);
+      if (fs.existsSync(srcPath)) {
+        const catDir = path.join(classifiedDir, sanitizeFolderName(assignedCategory));
+        fs.mkdirSync(catDir, { recursive: true });
+        const destPath = path.join(catDir, path.basename(srcPath));
+        try {
+          fs.renameSync(srcPath, destPath);
+          paper.filePath = path.join(
+            'pdfs', 'classified',
+            sanitizeFolderName(assignedCategory),
+            path.basename(srcPath)
+          );
+        } catch {}
+      }
+    }
+
+    results.push(paper);
+
     if (hasApiKey) await new Promise(r => setTimeout(r, 300));
   }
 
   fs.writeFileSync(metadataPath, JSON.stringify(results, null, 2), 'utf8');
 
+  // ── 카테고리별 통계 출력 ────────────────────────────────
+  const catCounts = {};
+  results.forEach(p => {
+    const c = p.primaryTag || '기타';
+    catCounts[c] = (catCounts[c] || 0) + 1;
+  });
+  console.log('\n카테고리별 분류 결과:');
+  Object.entries(catCounts)
+    .sort((a, b) => b[1] - a[1])
+    .forEach(([cat, n]) => console.log(`  ${cat}: ${n}건`));
+
+  // ── CSV 저장 ─────────────────────────────────────────────
   const csvPath = path.join(outputDir, 'report.csv');
   const csvLines = [
-    '제목,저자,연도,주제태그,핵심태그,요약,파일경로,다운로드상태',
+    '제목,저자,연도,카테고리,요약,파일경로,다운로드상태',
     ...results.map(p => [
       `"${(p.title || '').replace(/"/g, '""')}"`,
       `"${(p.authors || []).join('; ')}"`,
       p.year || '',
-      `"${(p.tags || []).join(', ')}"`,
       `"${p.primaryTag || ''}"`,
       `"${(p.summary || '').replace(/"/g, '""')}"`,
       `"${p.filePath || ''}"`,
-      p.downloadStatus || 'unknown'
-    ].join(','))
+      p.downloadStatus || 'unknown',
+    ].join(',')),
   ];
   fs.writeFileSync(csvPath, '﻿' + csvLines.join('\n'), 'utf8');
   console.log(`\nreport.csv 저장: ${csvPath}`);
-
-  const tagCounts = {};
-  results.forEach(p => (p.tags || []).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; }));
-  const topTags = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-  console.log('\n주요 태그 통계:');
-  topTags.forEach(([tag, count]) => console.log(`  ${tag}: ${count}건`));
 
   return results;
 }
 
 function sanitizeFolderName(name) {
-  return name.replace(/[\\/:*?"<>|]/g, '').trim() || '미분류';
+  return (name || '기타').replace(/[\\/:*?"<>|]/g, '').trim() || '기타';
 }
 
-module.exports = { runClassify, classifyPaper };
+module.exports = { runClassify };
