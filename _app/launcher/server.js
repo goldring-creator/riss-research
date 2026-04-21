@@ -172,8 +172,15 @@ app.post('/api/extract-keywords', upload.single('file'), async (req, res) => {
         max_tokens: 200,
         messages: [{
           role: 'user',
-          content: `다음 연구 내용을 읽고, RISS에서 관련 논문을 검색할 한국어 키워드 3~5개를 추출하세요.
-키워드만 쉼표로 구분하여 한 줄로 출력하세요. 설명 없이 키워드만.
+          content: `다음 연구 내용을 분석하여 RISS 국내 학술논문 검색에 최적화된 검색어 3~5개를 생성하세요.
+
+조건:
+- 핵심 개념 2~3개를 조합한 구체적인 표현 (예: 초임교사 정체성 형성, 교직 전문성 개발)
+- "분석", "과정", "연구" 같은 방법·행위 단어는 검색어 끝에 붙이지 말 것
+- "교육", "학교" 같은 단독 광범위 단어 사용 금지
+- 동의어/유사 개념으로 다양한 결과 커버
+
+검색어만 쉼표로 구분하여 한 줄로 출력하세요. 설명 없이.
 
 연구 내용:
 ${text}`,
@@ -183,7 +190,7 @@ ${text}`,
     } else {
       const claudeCliPath = findClaudeCli();
       if (!claudeCliPath) return res.status(400).json({ error: 'Claude API 키 또는 Claude CLI가 필요합니다.' });
-      const prompt = `다음 연구 내용을 읽고, RISS에서 관련 논문을 검색할 한국어 키워드 3~5개를 추출하세요.\n키워드만 쉼표로 구분하여 한 줄로 출력하세요. 설명 없이 키워드만.\n\n연구 내용:\n${text}`;
+      const prompt = `다음 연구 내용을 분석하여 RISS 국내 학술논문 검색에 최적화된 검색어 3~5개를 생성하세요.\n\n조건:\n- 핵심 개념 2~3개를 조합한 구체적인 표현 (예: 초임교사 정체성 형성, 교직 전문성 개발)\n- "분석", "과정", "연구" 같은 방법·행위 단어는 검색어 끝에 붙이지 말 것\n- "교육", "학교" 같은 단독 광범위 단어 사용 금지\n- 동의어/유사 개념으로 다양한 결과 커버\n\n검색어만 쉼표로 구분하여 한 줄로 출력하세요. 설명 없이.\n\n연구 내용:\n${text}`;
       const r = spawnSync(claudeCliPath, ['-p', prompt], {
         encoding: 'utf8', timeout: 60000,
         env: { ...process.env, PATH: `/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${process.env.PATH}` },
