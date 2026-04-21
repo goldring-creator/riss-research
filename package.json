@@ -1,0 +1,17 @@
+{
+  "name": "riss-research-application",
+  "version": "1.0.0",
+  "description": "RISS 논문 수집 데스크탑 앱 (배포용)",
+  "main": "launcher/server.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node launcher/server.js",
+    "install-browsers": "npx playwright install chromium"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.90.0",
+    "dotenv": "^17.4.2",
+    "express": "^4.18.2",
+    "playwright": "^1.59.1"
+  }
+}

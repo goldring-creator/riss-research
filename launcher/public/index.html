@@ -1,0 +1,182 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RISS 논문 수집기</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>📚 RISS 논문 수집기</h1>
+  <div class="thesis-notice">⚠️ 학위논문은 포함되지 않습니다</div>
+</header>
+
+<main class="main-content">
+
+  <!-- 자격증명 카드 -->
+  <div class="card" id="card-credentials">
+    <div class="card-header" onclick="toggleCard('credentials')">
+      <h2>🔐 도서관 로그인 설정</h2>
+      <span class="status-badge missing" id="cred-badge">미설정</span>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="card-body" id="body-credentials">
+      <div class="form-row">
+        <div class="form-group">
+          <label>도서관 ID</label>
+          <input type="text" id="library-id" placeholder="학번 또는 이용자 ID" autocomplete="username">
+        </div>
+        <div class="form-group">
+          <label>도서관 PW</label>
+          <input type="password" id="library-pw" placeholder="비밀번호" autocomplete="current-password">
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:6px">
+          <button class="btn btn-primary btn-sm" onclick="saveLibraryCredentials()">ID 저장</button>
+          <span class="save-status" id="lib-status"></span>
+        </div>
+      </div>
+      <div class="form-row" style="margin-top:4px">
+        <div class="form-group">
+          <label>Claude API 키 <span style="font-weight:400;text-transform:none">(분류 기능 사용 시)</span></label>
+          <input type="password" id="anthropic-key" placeholder="sk-ant-..." autocomplete="off">
+        </div>
+        <div style="display:flex;align-items:flex-end;gap:6px">
+          <button class="btn btn-secondary btn-sm" onclick="saveAnthropicKey()">키 저장</button>
+          <span class="save-status" id="api-status"></span>
+        </div>
+      </div>
+      <div class="keychain-notice">
+        🔒 비밀번호는 macOS Keychain에 안전하게 저장됩니다. 처음 저장 시 시스템 팝업이 뜨면 <strong>"항상 허용"</strong>을 클릭하세요.
+      </div>
+    </div>
+  </div>
+
+  <!-- 키워드 카드 -->
+  <div class="card">
+    <div class="card-header open" onclick="toggleCard('keywords')">
+      <h2>🔍 검색 키워드</h2>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="card-body" id="body-keywords">
+      <div class="form-group">
+        <label>키워드 태그 <span style="font-weight:400;text-transform:none">— Enter 또는 쉼표로 추가</span></label>
+        <div class="tag-input-wrap" id="keyword-tag-wrap" onclick="document.getElementById('kw-input').focus()">
+          <input type="text" class="tag-input" id="kw-input" placeholder="예: 교사 정체성">
+        </div>
+        <div class="tag-hint">여러 키워드를 추가하면 각각 검색 후 결과를 병합합니다.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 필터 카드 -->
+  <div class="card">
+    <div class="card-header" onclick="toggleCard('filters')">
+      <h2>⚙️ 검색 필터 및 옵션</h2>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="card-body collapsed" id="body-filters">
+      <div class="filters-grid">
+        <div class="form-group">
+          <label>수집 페이지 수</label>
+          <input type="number" id="pages" value="3" min="1" max="20">
+        </div>
+        <div class="form-group">
+          <label>시작 연도</label>
+          <input type="number" id="year-from" placeholder="예: 2015" min="1990" max="2030">
+        </div>
+        <div class="form-group">
+          <label>종료 연도</label>
+          <input type="number" id="year-to" placeholder="예: 2024" min="1990" max="2030">
+        </div>
+        <div class="form-group">
+          <label>상위 N건 (피인용순)</label>
+          <input type="number" id="top-n" placeholder="비워두면 전체" min="1">
+        </div>
+        <div class="form-group">
+          <label>최소 피인용 횟수</label>
+          <input type="number" id="min-citations" value="0" min="0">
+        </div>
+        <div class="form-group" style="justify-content:flex-end">
+          <div class="checkbox-row">
+            <input type="checkbox" id="kci-only">
+            <label for="kci-only" style="font-size:14px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer">KCI 등재 논문만</label>
+          </div>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:12px">
+        <label>정렬 방식</label>
+        <div class="sort-options">
+          <label class="sort-option selected" id="sort-rank">
+            <input type="radio" name="sort" value="rank" checked> 🎯 정확도순
+          </label>
+          <label class="sort-option" id="sort-newest">
+            <input type="radio" name="sort" value="newest"> 🕐 최신순
+          </label>
+          <label class="sort-option" id="sort-popular">
+            <input type="radio" name="sort" value="popular"> 📈 인기도순
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group" style="margin-top:12px">
+        <label>제외 키워드 <span style="font-weight:400;text-transform:none">— Enter 또는 쉼표로 추가</span></label>
+        <div class="tag-input-wrap" id="exclude-tag-wrap" onclick="document.getElementById('ex-input').focus()">
+          <input type="text" class="tag-input" id="ex-input" placeholder="예: 유아, 대학생">
+        </div>
+      </div>
+
+      <div class="form-row" style="margin-top:12px;gap:16px">
+        <div class="checkbox-row">
+          <input type="checkbox" id="skip-download">
+          <label for="skip-download" style="font-size:14px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer">PDF 다운로드 건너뜀</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="skip-classify" checked>
+          <label for="skip-classify" style="font-size:14px;font-weight:400;text-transform:none;letter-spacing:0;cursor:pointer">분류 건너뜀 (API 키 없을 시)</label>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 저장 위치 카드 -->
+  <div class="card">
+    <div class="card-header open" onclick="toggleCard('output')">
+      <h2>📁 저장 위치</h2>
+      <span class="chevron">▼</span>
+    </div>
+    <div class="card-body" id="body-output">
+      <div class="folder-row">
+        <input type="text" id="output-dir" readonly placeholder="폴더를 선택하세요">
+        <button class="btn btn-secondary" onclick="pickFolder()">폴더 선택</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- 실행 영역 -->
+  <div class="run-section">
+    <button class="btn-run" id="btn-run" onclick="toggleRun()" disabled>
+      <span id="run-icon">▶</span>
+      <span id="run-label">수집 시작</span>
+    </button>
+    <div class="run-info" id="run-info">키워드와 도서관 ID를 설정하면 활성화됩니다.</div>
+  </div>
+
+  <!-- 로그 카드 -->
+  <div class="card log-card" id="log-card">
+    <div class="card-header open">
+      <h2>📋 실행 로그</h2>
+    </div>
+    <div class="card-body">
+      <div class="progress-bar-wrap"><div class="progress-bar" id="progress-bar"></div></div>
+      <div class="log-output" id="log-output"></div>
+    </div>
+  </div>
+
+</main>
+
+<script src="app.js"></script>
+</body>
+</html>
