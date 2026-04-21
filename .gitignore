@@ -1,6 +1,5 @@
-node_modules/
+_app/node_modules/
+_app/output/
 .env
-output/
 *.log
 .DS_Store
-~/.riss/
