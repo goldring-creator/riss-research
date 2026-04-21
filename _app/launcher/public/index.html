@@ -109,7 +109,10 @@
       <span class="chevron">▾</span>
     </div>
     <div class="card-body" id="body-keywords">
-      <label class="field-label">키워드 태그 <span class="label-note">— Enter 또는 쉼표로 추가 · 여러 키워드는 각각 검색 후 병합</span></label>
+      <div class="field-label-row">
+        <label class="field-label">키워드 태그 <span class="label-note">— Enter 또는 쉼표로 추가 · 여러 키워드는 각각 검색 후 병합</span></label>
+        <button class="btn-clear-all" id="btn-clear-keywords" onclick="clearAllKeywords()" style="display:none">전체 삭제</button>
+      </div>
       <div style="margin-top:6px">
         <div class="tag-input-wrap" id="keyword-tag-wrap" onclick="document.getElementById('kw-input').focus()">
           <input type="text" class="tag-input" id="kw-input" placeholder="예: 교사 정체성">

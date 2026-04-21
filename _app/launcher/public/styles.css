@@ -756,6 +756,31 @@ input[type="checkbox"] {
   margin-bottom: 10px;
 }
 
+/* ── Field label row ──────────────────────── */
+.field-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.btn-clear-all {
+  background: none;
+  border: 1px solid var(--border-mid);
+  border-radius: var(--radius-sm);
+  padding: 3px 10px;
+  font-family: 'Outfit', sans-serif;
+  font-size: 11px;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition: all var(--ease);
+  white-space: nowrap;
+}
+.btn-clear-all:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-dim);
+}
+
 /* ── Summary card ─────────────────────────── */
 .summary-card { border-color: var(--accent-border) !important; }
 .summary-stats {

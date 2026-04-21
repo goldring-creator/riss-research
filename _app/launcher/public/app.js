@@ -34,15 +34,7 @@ function applyConfig(cfg) {
   if (cfg.minCitations) document.getElementById('min-citations').value = cfg.minCitations;
   if (cfg.topN) document.getElementById('top-n').value = cfg.topN;
 
-  // 마지막 키워드 태그 복원
-  if (cfg.lastKeywords && cfg.lastKeywords.length > 0) {
-    cfg.lastKeywords.forEach(kw => addTag(kw, 'keyword-tag-wrap', state.keywords, 'kw-input', updateRunButton));
-  }
-
-  // 제외 키워드 복원
-  if (cfg.excludeKeywords && cfg.excludeKeywords.length > 0) {
-    cfg.excludeKeywords.forEach(kw => addTag(kw, 'exclude-tag-wrap', state.excludeKeywords, 'ex-input', () => {}));
-  }
+  // 검색 키워드는 매 실행 시 초기화 (이전 세션 키워드 복원 안 함)
 
   // 자격증명 상태
   state.hasLibraryCreds = cfg.hasLibraryCredentials;
@@ -182,6 +174,13 @@ function setFile(file) {
   document.getElementById('drop-file-row').style.display = 'flex';
   document.getElementById('btn-extract').disabled = false;
   document.getElementById('extract-status').textContent = '';
+}
+
+function clearAllKeywords() {
+  state.keywords.splice(0);
+  renderTags('keyword-tag-wrap', state.keywords, 'kw-input', updateRunButton);
+  updateRunButton();
+  document.getElementById('btn-clear-keywords').style.display = 'none';
 }
 
 function clearFile() {
@@ -349,6 +348,9 @@ function updateRunButton() {
   const info = document.getElementById('run-info');
   const hasKw = state.keywords.length > 0;
   const hasCreds = state.hasLibraryCreds;
+
+  const clearBtn = document.getElementById('btn-clear-keywords');
+  if (clearBtn) clearBtn.style.display = hasKw ? 'inline-block' : 'none';
 
   btn.disabled = !hasKw || !hasCreds || state.isRunning;
 
