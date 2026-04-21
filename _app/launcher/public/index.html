@@ -87,7 +87,10 @@
         <div class="drop-icon">↑</div>
         <p class="drop-hint">파일을 여기에 드래그 앤 드롭하세요</p>
         <button class="btn btn-ghost btn-sm" onclick="document.getElementById('file-input').click()">파일 탐색</button>
-        <p class="drop-file-name" id="drop-file-name"></p>
+        <div class="drop-file-row" id="drop-file-row" style="display:none">
+          <p class="drop-file-name" id="drop-file-name"></p>
+          <button class="drop-file-clear" onclick="clearFile()" title="파일 취소">×</button>
+        </div>
       </div>
       <div class="action-row" style="margin-top:12px">
         <button class="btn btn-primary" id="btn-extract" onclick="extractKeywords()" disabled>키워드 추출</button>

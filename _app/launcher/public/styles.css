@@ -655,12 +655,40 @@ input[type="checkbox"] {
   opacity: .55;
   letter-spacing: .2px;
 }
+.drop-file-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+}
 .drop-file-name {
   font-size: 12px;
   color: var(--accent);
   font-family: 'JetBrains Mono', monospace;
   word-break: break-all;
-  min-height: 16px;
+  flex: 1;
+}
+.drop-file-clear {
+  background: none;
+  border: 1px solid var(--border-mid);
+  border-radius: 50%;
+  width: 20px;
+  height: 20px;
+  color: var(--text-muted);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: all var(--ease);
+  padding: 0;
+}
+.drop-file-clear:hover {
+  border-color: var(--danger);
+  color: var(--danger);
+  background: var(--danger-dim);
 }
 
 /* ── Hidden ───────────────────────────────── */

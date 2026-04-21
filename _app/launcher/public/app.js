@@ -179,8 +179,18 @@ function setFile(file) {
   }
   selectedFile = file;
   document.getElementById('drop-file-name').textContent = file.name;
+  document.getElementById('drop-file-row').style.display = 'flex';
   document.getElementById('btn-extract').disabled = false;
   document.getElementById('extract-status').textContent = '';
+}
+
+function clearFile() {
+  selectedFile = null;
+  document.getElementById('drop-file-name').textContent = '';
+  document.getElementById('drop-file-row').style.display = 'none';
+  document.getElementById('btn-extract').disabled = true;
+  document.getElementById('extract-status').textContent = '';
+  document.getElementById('file-input').value = '';
 }
 
 async function extractKeywords() {
