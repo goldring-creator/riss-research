@@ -144,6 +144,7 @@ app.post('/api/extract-keywords', upload.single('file'), async (req, res) => {
       const { PDFParse } = require('pdf-parse');
       const buf = fs.readFileSync(tmpPath);
       const parser = new PDFParse({ data: buf });
+      await parser.load(buf);
       const data = await parser.getText();
       text = data.text;
       await parser.destroy().catch(() => {});
@@ -231,10 +232,44 @@ app.post('/api/run', (req, res) => {
 
   send('start', '파이프라인 시작...\n');
 
+  const resolvedOutputDir = params.outputDir || path.join(__dirname, '..', 'output');
+
   runner.run(
     { ...params, libraryId: lid, libraryPw: lpw, anthropicKey, useClaudeCli, claudeCliPath },
     (text) => send('log', text),
     (code) => {
+      if (code === 0) {
+        let total = 0, pdfCount = 0;
+        try {
+          const metaPath = path.join(resolvedOutputDir, 'metadata.json');
+          if (fs.existsSync(metaPath)) {
+            const papers = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+            total = Array.isArray(papers) ? papers.length : 0;
+          }
+        } catch {}
+        try {
+          const countPdfs = (dir) => {
+            if (!fs.existsSync(dir)) return 0;
+            return fs.readdirSync(dir).reduce((acc, f) => {
+              const fp = path.join(dir, f);
+              return acc + (fs.statSync(fp).isDirectory() ? countPdfs(fp) : f.endsWith('.pdf') ? 1 : 0);
+            }, 0);
+          };
+          pdfCount = countPdfs(path.join(resolvedOutputDir, 'pdfs'));
+        } catch {}
+
+        send('summary', { outputDir: resolvedOutputDir, total, pdfCount });
+
+        try {
+          if (process.platform !== 'win32') {
+            execSync(
+              `osascript -e 'display notification "총 ${total}건 수집 완료 · PDF ${pdfCount}개" with title "RISS 논문 수집기" sound name "Glass"'`,
+              { timeout: 5000 }
+            );
+          }
+        } catch {}
+      }
+
       send('end', code === 0 ? '✅ 완료' : `❌ 종료 코드: ${code}`);
       res.end();
     }
@@ -245,6 +280,22 @@ app.post('/api/run', (req, res) => {
 app.post('/api/stop', (req, res) => {
   runner.stop();
   res.json({ ok: true });
+});
+
+// ── 저장 폴더 열기 ────────────────────────────────────────
+app.post('/api/open-folder', (req, res) => {
+  const { path: folderPath } = req.body;
+  if (!folderPath) return res.status(400).json({ error: '경로가 없습니다.' });
+  try {
+    if (process.platform === 'win32') {
+      execSync(`explorer "${folderPath.replace(/\//g, '\\')}"`, { timeout: 5000 });
+    } else {
+      execSync(`open "${folderPath}"`, { timeout: 5000 });
+    }
+    res.json({ ok: true });
+  } catch (e) {
+    res.status(500).json({ error: e.message });
+  }
 });
 
 // ── 서버 종료 ─────────────────────────────────────────────

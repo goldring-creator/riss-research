@@ -252,6 +252,29 @@
     </div>
   </div>
 
+  <!-- 수집 결과 요약 -->
+  <div class="card summary-card hidden" id="summary-card">
+    <div class="card-header open">
+      <div class="card-header-left">
+        <h2>수집 결과</h2>
+      </div>
+    </div>
+    <div class="card-body">
+      <div class="summary-stats">
+        <div class="summary-stat">
+          <div class="summary-stat-value" id="summary-total">0</div>
+          <div class="summary-stat-label">수집 논문</div>
+        </div>
+        <div class="summary-stat">
+          <div class="summary-stat-value" id="summary-pdfs">0</div>
+          <div class="summary-stat-label">다운로드 PDF</div>
+        </div>
+      </div>
+      <div class="summary-path" id="summary-path"></div>
+      <button class="btn btn-ghost summary-folder-btn" onclick="openOutputFolder()">폴더 열기</button>
+    </div>
+  </div>
+
 </main>
 
 <footer class="app-footer">

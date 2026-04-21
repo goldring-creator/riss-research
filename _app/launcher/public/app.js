@@ -6,6 +6,7 @@ const state = {
   hasLibraryCreds: false,
   hasAnthropicKey: false,
   hasClaudeCli: false,
+  lastOutputDir: null,
 };
 
 // ── 초기화 ────────────────────────────────────────────────
@@ -305,6 +306,20 @@ function updateClaudeStatus() {
   }
 }
 
+// ── 저장 폴더 열기 ────────────────────────────────────────
+async function openOutputFolder() {
+  if (!state.lastOutputDir) return;
+  try {
+    await fetch('/api/open-folder', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: state.lastOutputDir }),
+    });
+  } catch (e) {
+    console.error('폴더 열기 실패:', e);
+  }
+}
+
 // ── 폴더 선택 ─────────────────────────────────────────────
 async function pickFolder() {
   try {
@@ -374,6 +389,7 @@ async function startPipeline() {
   logCard.classList.add('visible');
   logOutput.textContent = '';
   progressBar.style.width = '0%';
+  document.getElementById('summary-card').classList.add('hidden');
 
   let logTotal = 0;
   let logCount = 0;
@@ -415,6 +431,12 @@ async function startPipeline() {
               logTotal = parseInt(m[2]);
               progressBar.style.width = `${Math.round((logCount / logTotal) * 100)}%`;
             }
+          } else if (type === 'summary') {
+            state.lastOutputDir = data.outputDir;
+            document.getElementById('summary-total').textContent = data.total;
+            document.getElementById('summary-pdfs').textContent = data.pdfCount;
+            document.getElementById('summary-path').textContent = data.outputDir;
+            document.getElementById('summary-card').classList.remove('hidden');
           } else if (type === 'end') {
             appendLog(data, data.startsWith('✅') ? 'log-success' : 'log-error');
             progressBar.style.width = data.startsWith('✅') ? '100%' : progressBar.style.width;
