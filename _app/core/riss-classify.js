@@ -4,9 +4,10 @@ const { spawnSync } = require('child_process');
 
 // ── 1차: 전체 논문 목록 → 공통 카테고리 3~5개 생성 ──────
 function buildCategoryPrompt(papers, keyword, researchContext) {
-  const list = papers.map((p, i) =>
-    `[${i + 1}] ${p.title} (${p.year})`
-  ).join('\n');
+  const list = papers.map((p, i) => {
+    const abs = p.abstract ? ` — ${p.abstract.replace(/\s+/g, ' ').trim().slice(0, 150)}` : '';
+    return `[${i + 1}] ${p.title} (${p.year})${abs}`;
+  }).join('\n');
 
   const contextLine = researchContext
     ? `연구 맥락:\n${researchContext}`
@@ -25,21 +26,25 @@ JSON 형식으로만 응답하세요:
 {"categories": ["카테고리1", "카테고리2", "카테고리3"]}`;
 }
 
-// ── 2차: 개별 논문 → 카테고리 배분 ──────────────────────
-function buildAssignPrompt(paper, categories) {
+// ── 2차: 배치(5편씩) 카테고리 배정 ──────────────────────
+const ASSIGN_BATCH = 5;
+
+function buildAssignBatchPrompt(batch, categories) {
   const catList = categories.map((c, i) => `${i + 1}. ${c}`).join('\n');
-  const abstract = paper.abstract ? paper.abstract.slice(0, 300) : '없음';
+  const items = batch.map((p, idx) => {
+    const abstract = p.abstract ? p.abstract.replace(/\s+/g, ' ').trim().slice(0, 200) : '없음';
+    return `[${idx + 1}] 제목: ${p.title}\n    초록: ${abstract}`;
+  }).join('\n\n');
 
-  return `제목: ${paper.title}
-초록: ${abstract}
-
-위 논문을 다음 카테고리 중 하나에 배정하고, 한 줄 요약도 작성하세요.
-
-카테고리:
+  return `카테고리 목록:
 ${catList}
 
-JSON 형식으로만 응답하세요:
-{"category": "정확한 카테고리 이름", "summary": "한 줄 요약 (30자 이내)"}`;
+아래 ${batch.length}편의 논문을 각각 위 카테고리 중 하나에 배정하고, 30자 이내 한 줄 요약을 작성하세요.
+논문 순서대로 JSON 배열로만 응답하세요:
+[{"category": "정확한 카테고리 이름", "summary": "한 줄 요약"}, ...]
+
+논문 목록:
+${items}`;
 }
 
 function parseJson(text) {
@@ -53,7 +58,7 @@ async function callApi(prompt) {
   const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const res = await client.messages.create({
     model: 'claude-haiku-4-5-20251001',
-    max_tokens: 400,
+    max_tokens: 600,
     messages: [{ role: 'user', content: prompt }],
   });
   return res.content[0].text.trim();
@@ -111,58 +116,68 @@ async function runClassify(metadataPath, pdfsDir, outputDir, keyword, researchCo
   });
   fs.mkdirSync(path.join(classifiedDir, '기타'), { recursive: true });
 
-  // ── 2차: 논문별 카테고리 배정 ───────────────────────────
-  console.log(`\n주제 분류 시작 (${papers.length}개)`);
-  const results = [];
+  // ── 2차: 배치(5편씩) 카테고리 배정 ─────────────────────
+  console.log(`\n주제 분류 시작 (${papers.length}편, ${ASSIGN_BATCH}편씩 배치)`);
+  const results = papers.map(p => ({ ...p }));
 
-  for (let i = 0; i < papers.length; i++) {
-    const paper = papers[i];
-    console.log(`  [${i + 1}/${papers.length}] ${paper.title.substring(0, 40)}...`);
+  for (let i = 0; i < papers.length; i += ASSIGN_BATCH) {
+    const batch = papers.slice(i, i + ASSIGN_BATCH);
+    const end = Math.min(i + ASSIGN_BATCH, papers.length);
+    console.log(`  [${i + 1}~${end}/${papers.length}] 배치 분류 중...`);
 
-    let assignedCategory = '기타';
-    let summary = '';
+    let assignments = batch.map(() => ({ category: '기타', summary: '' }));
 
     try {
-      const text = await callClaude(buildAssignPrompt(paper, categories));
-      const parsed = parseJson(text);
-      summary = parsed.summary || '';
-
-      // 응답 카테고리가 실제 목록에 있는지 확인 (fuzzy match)
-      const match = categories.find(c =>
-        c === parsed.category ||
-        c.includes(parsed.category) ||
-        parsed.category?.includes(c)
-      );
-      assignedCategory = match || '기타';
-
-      console.log(`    → [${assignedCategory}] ${summary}`);
-    } catch (e) {
-      console.error(`    ✗ 배정 실패: ${e.message}`);
-    }
-
-    paper.primaryTag = assignedCategory;
-    paper.summary = summary;
-    paper.classified = assignedCategory !== '기타';
-
-    // PDF 이동
-    if (paper.filePath) {
-      const srcPath = path.join(outputDir, paper.filePath);
-      if (fs.existsSync(srcPath)) {
-        const catDir = path.join(classifiedDir, sanitizeFolderName(assignedCategory));
-        fs.mkdirSync(catDir, { recursive: true });
-        const destPath = path.join(catDir, path.basename(srcPath));
-        try {
-          fs.renameSync(srcPath, destPath);
-          paper.filePath = path.join(
-            'pdfs', 'classified',
-            sanitizeFolderName(assignedCategory),
-            path.basename(srcPath)
-          );
-        } catch {}
+      const text = await callClaude(buildAssignBatchPrompt(batch, categories));
+      const m = text.match(/\[[\s\S]+\]/);
+      if (m) {
+        const parsed = JSON.parse(m[0]);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((item, idx) => {
+            if (idx < assignments.length) {
+              const match = categories.find(c =>
+                c === item.category ||
+                c.includes(item.category) ||
+                item.category?.includes(c)
+              );
+              assignments[idx] = {
+                category: match || '기타',
+                summary: item.summary || '',
+              };
+            }
+          });
+        }
       }
+    } catch (e) {
+      console.error(`  배치 분류 실패 (기본값 사용): ${e.message}`);
     }
 
-    results.push(paper);
+    batch.forEach((paper, idx) => {
+      const { category: assignedCategory, summary } = assignments[idx];
+      console.log(`    [${i + idx + 1}] → [${assignedCategory}] ${summary}`);
+
+      results[i + idx].primaryTag = assignedCategory;
+      results[i + idx].summary = summary;
+      results[i + idx].classified = assignedCategory !== '기타';
+
+      // PDF 이동
+      if (paper.filePath) {
+        const srcPath = path.join(outputDir, paper.filePath);
+        if (fs.existsSync(srcPath)) {
+          const catDir = path.join(classifiedDir, sanitizeFolderName(assignedCategory));
+          fs.mkdirSync(catDir, { recursive: true });
+          const destPath = path.join(catDir, path.basename(srcPath));
+          try {
+            fs.renameSync(srcPath, destPath);
+            results[i + idx].filePath = path.join(
+              'pdfs', 'classified',
+              sanitizeFolderName(assignedCategory),
+              path.basename(srcPath)
+            );
+          } catch {}
+        }
+      }
+    });
 
     if (hasApiKey) await new Promise(r => setTimeout(r, 300));
   }

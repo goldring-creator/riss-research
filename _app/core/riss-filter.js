@@ -4,7 +4,7 @@ const BATCH_SIZE = 15;
 
 function buildPrompt(papers, keywords, researchContext) {
   const list = papers.map((p, i) => {
-    const abstract = p.abstract ? p.abstract.replace(/\s+/g, ' ').trim().slice(0, 300) : '없음';
+    const abstract = p.abstract ? p.abstract.replace(/\s+/g, ' ').trim().slice(0, 700) : '없음';
     return `[${i + 1}] 제목: ${p.title}\n초록: ${abstract}`;
   }).join('\n\n');
 

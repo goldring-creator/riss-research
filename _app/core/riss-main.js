@@ -140,7 +140,7 @@ async function main() {
     let pageOffset = 0;
 
     for (const keyword of opts.keywords) {
-      const papers = await runSearch(rissPage, keyword, opts.pages, outputDir, filters, pageOffset, totalSearchPages);
+      const papers = await runSearch(context, rissPage, keyword, opts.pages, outputDir, filters, pageOffset, totalSearchPages);
       pageOffset += opts.pages;
       for (const paper of papers) {
         if (paper.controlNo && seenControlNos.has(paper.controlNo)) {
